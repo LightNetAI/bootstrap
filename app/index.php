@@ -35,7 +35,7 @@ try {
     renderFatal(
         'Bootstrap is not configured',
         $exception->getMessage(),
-        'Run the installer again: curl -fsSL https://raw.githubusercontent.com/LightNetAI/bootstrap/main/install.sh | bash'
+        'Run the installer again: curl -fsSL https://raw.githubusercontent.com/LightNetAI/bootstrap/main/install.php | php -- --webroot /path/to/public_html'
     );
 }
 

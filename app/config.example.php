@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * Bootstrap frontend configuration.
  *
- * install.sh runs bin/configure.php, which writes config.php with these values
+ * install.php runs bin/configure.php, which writes config.php with these values
  * plus the absolute backend URL, data directory and install timestamp. Edit
  * config.php afterwards if you need to change something.
  */

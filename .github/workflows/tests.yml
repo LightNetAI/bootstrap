@@ -21,13 +21,7 @@ jobs:
           coverage: none
       - name: Lint
         run: |
+          php -l install.php
           find app tests -name '*.php' -print0 | xargs -0 -n1 php -l
-          bash -n install.sh
       - name: Tests
         run: php tests/run.php
-
-  shellcheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: shellcheck install.sh

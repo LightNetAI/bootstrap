@@ -292,6 +292,73 @@ TestSuite::test('deploy rejects path traversal in repository names', function ()
     }
 });
 
+TestSuite::test('install.php installs from a local source and refuses to overwrite', function () use ($root, $appSource): void {
+    $webroot = $root . '/installer-' . bin2hex(random_bytes(3));
+    $command = [
+        PHP_BINARY,
+        dirname(__DIR__) . '/install.php',
+        '--source', $appSource,
+        '--webroot', $webroot,
+        '--backend', 'https://bootstrap.example.test',
+        '--skip-health',
+    ];
+
+    $result = Process::run($command, gitEnv($root), $root, 120);
+    TestSuite::assertSame(0, $result['exit'], $result['stderr']);
+    TestSuite::assertTrue(is_file($webroot . '/config.php'), 'config.php missing');
+    TestSuite::assertTrue(is_file($webroot . '/.bootstrap-manifest.json'), 'manifest missing');
+    TestSuite::assertTrue(is_executable($webroot . '/bin/configure.php'), 'configure.php not executable');
+    TestSuite::assertSame('0600', substr(sprintf('%o', fileperms($webroot . '/config.php')), -4));
+
+    $again = Process::run($command, gitEnv($root), $root, 120);
+    TestSuite::assertTrue($again['exit'] !== 0, 'second install should fail without --force');
+    TestSuite::assertContains('already contains a Bootstrap installation', $again['stderr']);
+
+    $forced = Process::run(array_merge($command, ['--force']), gitEnv($root), $root, 120);
+    TestSuite::assertSame(0, $forced['exit'], $forced['stderr']);
+
+    Files::rmrf($webroot);
+    foreach (glob($root . '/.bootstrap-data-*') ?: [] as $dataDir) {
+        Files::rmrf($dataDir);
+    }
+});
+
+TestSuite::test('install.php extracts a release archive', function () use ($root, $appSource): void {
+    $build = $root . '/build-' . bin2hex(random_bytes(3));
+    mkdir($build . '/bootstrap-main', 0755, true);
+    copyTree($appSource, $build . '/bootstrap-main/app');
+
+    $archive = $build . '/release.tar.gz';
+    $tar = Process::run(
+        ['tar', '-czf', $archive, '-C', $build, 'bootstrap-main'],
+        gitEnv($root),
+        null,
+        60
+    );
+    TestSuite::assertSame(0, $tar['exit'], 'could not build the test archive: ' . $tar['stderr']);
+
+    $webroot = $root . '/installer-archive-' . bin2hex(random_bytes(3));
+    $result = Process::run([
+        PHP_BINARY,
+        dirname(__DIR__) . '/install.php',
+        '--archive', $archive,
+        '--webroot', $webroot,
+        '--backend', 'https://bootstrap.example.test',
+        '--skip-health',
+    ], gitEnv($root), $root, 120);
+
+    TestSuite::assertSame(0, $result['exit'], $result['stderr']);
+    TestSuite::assertTrue(is_file($webroot . '/index.php'), 'index.php missing');
+    TestSuite::assertTrue(is_file($webroot . '/lib/bootstrap.php'), 'lib missing');
+    TestSuite::assertTrue(is_file($webroot . '/config.php'), 'config.php missing');
+
+    Files::rmrf($webroot);
+    Files::rmrf($build);
+    foreach (glob($root . '/.bootstrap-data-*') ?: [] as $dataDir) {
+        Files::rmrf($dataDir);
+    }
+});
+
 TestSuite::test('frontend page renders and rejects a POST without CSRF', function () use ($root, $appSource): void {
     $install = makeInstall($root, $appSource);
     $port = random_int(20000, 45000);

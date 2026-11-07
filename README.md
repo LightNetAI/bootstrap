@@ -7,12 +7,21 @@ password-encrypted SSH key, lists the projects in
 you pick with `git` — deleting itself in the process.
 
 ```
-curl -fsSL https://raw.githubusercontent.com/LightNetAI/bootstrap/main/install.sh \
-  | bash -s -- --webroot "$HOME/public_html"
+curl -fsSL https://raw.githubusercontent.com/LightNetAI/bootstrap/main/install.php \
+  | php -- --webroot "$HOME/public_html"
 ```
 
-That is the whole installation. Open the site, sign in with the credentials
-issued by the backend, choose a project, press **Deploy project**.
+That is the whole installation — the installer is a PHP script, so no bash
+features are involved. If piping into `php` is awkward on your host:
+
+```
+curl -fsSL -o /tmp/bootstrap-install.php \
+  https://raw.githubusercontent.com/LightNetAI/bootstrap/main/install.php
+php /tmp/bootstrap-install.php --webroot "$HOME/public_html"
+```
+
+Open the site, sign in with the credentials issued by the backend, choose a
+project, press **Deploy project**.
 
 ---
 
@@ -36,9 +45,9 @@ hosting shell                browser                       BootStrapServer
      |                          |----10. swap web root, delete installer
 ```
 
-1. **Install** — `install.sh` downloads this repository, copies `app/` into
-   the document root, writes `config.php` with the hard-coded backend URL and
-   runs a self-test.
+1. **Install** — `install.php` downloads this repository (or uses a local
+   checkout/archive), copies `app/` into the document root, writes
+   `config.php` with the hard-coded backend URL and runs a self-test.
 2. **Sign in** — the login form posts to your own server, which forwards the
    credentials to BootStrapServer over HTTPS. The backend answers with the SSH
    private key sealed with a key derived from the password you just typed.
@@ -54,7 +63,7 @@ hosting shell                browser                       BootStrapServer
 
 | Requirement | Notes |
 |---|---|
-| PHP 8.1+ | `curl`, `openssl`, `session`, `json`, `mbstring` |
+| PHP 8.1+ CLI | runs the installer and the app; `curl`, `openssl`, `session`, `json`, `mbstring` |
 | `proc_open` | must not be in `disable_functions` |
 | `git` and `ssh` binaries | on `PATH` (or set `git_binary`) |
 | Writable document root | the installer and the deploy both write there |
@@ -74,13 +83,21 @@ a data directory outside the web root (or inside it, deny-protected, if
 --owner <name>           GitHub owner (default: LightNetAI)
 --git-base <url>         git base URL (default: git@github.com:<owner>)
 --archive <file>         install from a local .tar.gz (offline)
+--source <dir>           install from a local checkout instead of downloading
 --branch <name>          installer branch (default: main)
 --force                  overwrite an existing install, keep config.php
 --skip-health            skip the backend probe in the self-test
 --allow-insecure-backend permit an http:// backend (local testing)
+--no-color               disable coloured output
 ```
 
-Re-running with `--force` keeps the existing `app_key`/`config.php` values.
+`BOOTSTRAP_BACKEND` and `BOOTSTRAP_TOKEN` are read from the environment when the
+matching option is not given (the token stays out of the process list and shell
+history).
+
+Re-running with `--force` overwrites the application files and regenerates
+`config.php`; the data directory is deterministic, so session/cache state is
+kept.
 
 ## Configuration
 
@@ -175,6 +192,8 @@ See [SECURITY.md](SECURITY.md) for the threat model and reporting.
 | `Could not decrypt the SSH key` | the password or the backend response changed in transit — retry; check TLS |
 | Blank page after deploy | the project has no `index.php` or `index.html`; the deploy was rolled back |
 | Private repos missing | set `github_token` in `config.php` |
+| `php: command not found` | run the installer with the panel's binary, e.g. `php8.3` or `/usr/local/bin/php` |
+| `FAIL PHP 8.1 or newer is required` | switch the shell to a newer PHP (panel PHP selector, `update-alternatives`) and re-run |
 
 Logs: PHP error log plus `data_dir/cache` (repo list) and the session files.
 
@@ -182,12 +201,14 @@ Logs: PHP error log plus `data_dir/cache` (repo list) and the session files.
 
 ```
 php tests/run.php          # unit + integration tests (needs git and ssh-keygen)
-php -S 127.0.0.1:8100 -t app tests/router.php   # run from source
+
+php install.php --source app --webroot /tmp/site --skip-health   # local install
+php -S 127.0.0.1:8100 -t /tmp/site tests/router.php              # run that install
 ```
 
 The suite covers envelope decryption, config validation, process timeouts,
-web-root swap, rollback, the unknown-files guard, path traversal and the CSRF
-gate.
+web-root swap, rollback, the unknown-files guard, path traversal, the CSRF gate
+and `install.php` itself (local source, archive extraction, `--force`).
 
 ## License
 

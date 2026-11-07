@@ -6,7 +6,7 @@ declare(strict_types=1);
  * Writes config.php, chooses a data directory that respects open_basedir,
  * records the installed file manifest and self-tests the host.
  *
- * Called by install.sh. Safe to re-run with --force.
+ * Called by install.php. Safe to re-run with --force.
  */
 
 if (PHP_SAPI !== 'cli') {
