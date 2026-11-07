@@ -113,7 +113,15 @@ final class BackendClient
 
         $decoded = json_decode((string) $body, true);
         if (!is_array($decoded)) {
-            return $this->failure($status, 'BootStrapServer returned an invalid response.', 'invalid_response');
+            $message = 'BootStrapServer returned an invalid response.';
+            if ($status >= 400) {
+                $message = sprintf(
+                    'BootStrapServer answered HTTP %d with a non-JSON response. The backend host is not executing Bootstrap: check its document root (public/), the PHP handler and that .htaccess is readable by the web user.',
+                    $status
+                );
+            }
+
+            return $this->failure($status, $message, 'invalid_response');
         }
 
         if ($status === 200 && ($decoded['ok'] ?? false) === true) {

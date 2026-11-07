@@ -192,6 +192,7 @@ See [SECURITY.md](SECURITY.md) for the threat model and reporting.
 | `Could not decrypt the SSH key` | the password or the backend response changed in transit — retry; check TLS |
 | Blank page after deploy | the project has no `index.php` or `index.html`; the deploy was rolled back |
 | Private repos missing | set `github_token` in `config.php` |
+| Sign-in says `HTTP 403 … non-JSON response` | the backend host is returning an Apache/nginx error instead of JSON: make sure its document root is `public/`, PHP runs `index.php`, and `public/.htaccess` is readable by the web user (`chmod 644`, parent directories `+x`) |
 | `php: command not found` | run the installer with the panel's binary, e.g. `php8.3` or `/usr/local/bin/php` |
 | `FAIL PHP 8.1 or newer is required` | switch the shell to a newer PHP (panel PHP selector, `update-alternatives`) and re-run |
 
