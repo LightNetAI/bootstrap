@@ -1,0 +1,27 @@
+# Bootstrap frontend - Apache hardening
+Options -Indexes -MultiViews
+DirectoryIndex index.php
+
+# Never serve secrets, runtime state or internals.
+<FilesMatch "^(config\.php|config\.example\.php|\.bootstrap-manifest\.json)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+RedirectMatch 404 ^/(lib|views|bin)/
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+    Header always set Referrer-Policy "no-referrer"
+</IfModule>
+
+<IfModule mod_php.c>
+    php_flag display_errors off
+    php_value session.cookie_httponly 1
+</IfModule>

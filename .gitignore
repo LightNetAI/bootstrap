@@ -1,0 +1,10 @@
+# Runtime configuration and state
+app/config.php
+app/.bootstrap-manifest.json
+app/.bootstrap-data/
+app/.bootstrap-data-*/
+
+# Tests
+tests/tmp/
+*.log
+.DS_Store
