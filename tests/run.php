@@ -295,7 +295,10 @@ TestSuite::test('deploy rejects path traversal in repository names', function ()
 TestSuite::test('frontend page renders and rejects a POST without CSRF', function () use ($root, $appSource): void {
     $install = makeInstall($root, $appSource);
     $port = random_int(20000, 45000);
-    $args = preg_split('/\s+/', trim((string) getenv('TEST_PHP_ARGS'))) ?: [];
+    $args = array_values(array_filter(
+        preg_split('/\s+/', trim((string) getenv('TEST_PHP_ARGS'))) ?: [],
+        static fn (string $arg): bool => $arg !== ''
+    ));
     $command = array_merge(
         [PHP_BINARY],
         $args,
