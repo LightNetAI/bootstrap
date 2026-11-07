@@ -302,23 +302,23 @@ TestSuite::test('frontend page renders and rejects a POST without CSRF', functio
         ['-S', '127.0.0.1:' . $port, '-t', $install['webroot'], dirname(__DIR__) . '/tests/router.php']
     );
 
+    $logFile = $install['data_dir'] . '/server.log';
     $process = proc_open(
         $command,
-        [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+        [0 => ['pipe', 'r'], 1 => ['file', $logFile, 'a'], 2 => ['file', $logFile, 'a']],
         $pipes,
         null,
-        [
-            'PATH' => getenv('PATH') ?: '/usr/bin:/bin',
+        array_merge(getenv(), [
             'HOME' => $root,
             'BOOTSTRAP_WEBROOT' => $install['webroot'],
-        ]
+        ])
     );
     TestSuite::assertTrue(is_resource($process), 'could not start the frontend server');
     fclose($pipes[0]);
 
     try {
         $ready = false;
-        for ($i = 0; $i < 40; $i++) {
+        for ($i = 0; $i < 100; $i++) {
             usleep(100000);
             [$status] = httpCall('GET', 'http://127.0.0.1:' . $port . '/');
             if ($status === 200) {
@@ -326,7 +326,10 @@ TestSuite::test('frontend page renders and rejects a POST without CSRF', functio
                 break;
             }
         }
-        TestSuite::assertTrue($ready, 'frontend did not become ready');
+        TestSuite::assertTrue(
+            $ready,
+            'frontend did not become ready: ' . substr((string) @file_get_contents($logFile), 0, 600)
+        );
 
         [$status, $body, $headers] = httpCall('GET', 'http://127.0.0.1:' . $port . '/');
         TestSuite::assertSame(200, $status);
@@ -343,8 +346,6 @@ TestSuite::test('frontend page renders and rejects a POST without CSRF', functio
         TestSuite::assertSame(419, $status, 'CSRF protection missing');
     } finally {
         proc_terminate($process, 9);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
         proc_close($process);
     }
 

@@ -173,7 +173,7 @@ See [SECURITY.md](SECURITY.md) for the threat model and reporting.
 | `SSH check failed: GitHub rejected the key` | add the public key printed by `key:show` to the GitHub account (or as a deploy key for the repo) |
 | `The web root contains files …` | confirm the extra files can be deleted, then deploy again |
 | `Could not decrypt the SSH key` | the password or the backend response changed in transit — retry; check TLS |
-| Blank page after deploy | the project has no `index.php`/\`index.html`; the deploy was rolled back |
+| Blank page after deploy | the project has no `index.php` or `index.html`; the deploy was rolled back |
 | Private repos missing | set `github_token` in `config.php` |
 
 Logs: PHP error log plus `data_dir/cache` (repo list) and the session files.
