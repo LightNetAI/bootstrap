@@ -16,6 +16,8 @@ final class GitHub
 {
     private const CACHE_TTL = 60;
 
+    private string $warning = '';
+
     public function __construct(private Config $config)
     {
     }
@@ -25,7 +27,9 @@ final class GitHub
      */
     public function listRepos(bool $refresh = false): array
     {
-        $cacheFile = $this->config->dataDir() . '/cache/repos.json';
+        $token = trim($this->config->getString('github_token'));
+        $cacheFile = $this->config->dataDir() . '/cache/repos-'
+            . ($token === '' ? 'anon' : substr(hash('sha256', $token), 0, 12)) . '.json';
         $cached = $this->readCache($cacheFile);
         if (!$refresh && $cached !== null && (time() - (int) $cached['fetched_at']) < self::CACHE_TTL) {
             return [
@@ -44,7 +48,7 @@ final class GitHub
             return [
                 'ok' => true,
                 'repos' => $this->sortRepos($repos),
-                'message' => '',
+                'message' => $this->warning,
                 'source' => 'api',
                 'rate_limited' => false,
             ];
@@ -95,6 +99,18 @@ final class GitHub
         }
 
         $owner = $this->config->githubOwner();
+        $token = trim($this->config->getString('github_token'));
+
+        // /users/{owner}/repos only ever returns public repositories, even with
+        // a token. /user/repos is the authenticated listing and includes the
+        // private ones, so try it first and filter to the configured owner.
+        if ($token !== '') {
+            $authenticated = $this->fetchForToken($owner);
+            if ($authenticated !== []) {
+                return $this->dedupe($authenticated);
+            }
+        }
+
         $type = $this->config->getString('github_owner_type', 'auto');
         $bases = match ($type) {
             'user' => ['/users/' . rawurlencode($owner) . '/repos'],
@@ -153,6 +169,70 @@ final class GitHub
         }
 
         throw new RuntimeException($lastError ?? 'Unable to list repositories.');
+    }
+
+    /**
+     * Repositories visible to the configured token, filtered to the owner.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function fetchForToken(string $owner): array
+    {
+        $page = 1;
+        $collected = [];
+        $sawAny = false;
+
+        while ($page <= 10) {
+            $url = $this->config->getString('github_api', 'https://api.github.com')
+                . '/user/repos?per_page=100&page=' . $page
+                . '&sort=pushed&direction=desc'
+                . '&affiliation=owner,collaborator,organization_member&visibility=all';
+            [$status, $body, $headers] = $this->request($url);
+
+            if ($status === 401) {
+                $this->warning = 'github_token was rejected by GitHub; showing public repositories only.';
+
+                return [];
+            }
+            if ($status === 403 || $status === 429) {
+                $message = is_array($body) ? (string) ($body['message'] ?? '') : '';
+                if (stripos($message, 'rate limit') !== false || ($headers['x-ratelimit-remaining'] ?? '') === '0') {
+                    throw new RateLimitException(
+                        'GitHub API rate limit reached. Add a github_token to config.php for a higher limit.'
+                    );
+                }
+
+                $this->warning = 'github_token could not list private repositories; showing public repositories only.';
+
+                return [];
+            }
+            if ($status !== 200 || !is_array($body)) {
+                return [];
+            }
+
+            foreach ($body as $repo) {
+                if (!is_array($repo) || !isset($repo['name'])) {
+                    continue;
+                }
+                $sawAny = true;
+                if (strcasecmp((string) ($repo['owner']['login'] ?? ''), $owner) !== 0) {
+                    continue;
+                }
+                $collected[] = $this->normalise($repo);
+            }
+
+            if (count($body) < 100 || !isset($headers['link']) || !str_contains($headers['link'], 'rel="next"')) {
+                break;
+            }
+            $page++;
+        }
+
+        if ($collected === [] && $sawAny) {
+            $this->warning = 'github_token cannot see repositories owned by ' . $owner
+                . '; showing public repositories only.';
+        }
+
+        return $collected;
     }
 
     /** @param array<string, mixed> $repo @return array<string, mixed> */

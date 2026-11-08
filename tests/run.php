@@ -15,6 +15,7 @@ use Bootstrap\Crypto;
 use Bootstrap\DeployException;
 use Bootstrap\Deployer;
 use Bootstrap\Files;
+use Bootstrap\GitHub;
 use Bootstrap\Process;
 use Bootstrap\SshKey;
 
@@ -356,6 +357,69 @@ TestSuite::test('install.php extracts a release archive', function () use ($root
     Files::rmrf($build);
     foreach (glob($root . '/.bootstrap-data-*') ?: [] as $dataDir) {
         Files::rmrf($dataDir);
+    }
+});
+
+TestSuite::test('token listing includes private repositories and falls back on rejection', function () use ($root, $appSource): void {
+    $port = random_int(20000, 45000);
+    $logFile = $root . '/github-server.log';
+    $args = array_values(array_filter(
+        preg_split('/\s+/', trim((string) getenv('TEST_PHP_ARGS'))) ?: [],
+        static fn (string $arg): bool => $arg !== ''
+    ));
+    $command = array_merge(
+        [PHP_BINARY],
+        $args,
+        ['-S', '127.0.0.1:' . $port, dirname(__DIR__) . '/tests/github-router.php']
+    );
+
+    $process = proc_open(
+        $command,
+        [0 => ['pipe', 'r'], 1 => ['file', $logFile, 'a'], 2 => ['file', $logFile, 'a']],
+        $pipes,
+        null,
+        array_merge(getenv(), ['HOME' => $root])
+    );
+    TestSuite::assertTrue(is_resource($process), 'could not start the fake GitHub server');
+    fclose($pipes[0]);
+
+    try {
+        $ready = false;
+        for ($i = 0; $i < 100; $i++) {
+            usleep(100000);
+            [$status] = httpCall('GET', 'http://127.0.0.1:' . $port . '/users/LightNetAI/repos');
+            if ($status === 200) {
+                $ready = true;
+                break;
+            }
+        }
+        TestSuite::assertTrue(
+            $ready,
+            'fake GitHub did not become ready: ' . substr((string) @file_get_contents($logFile), 0, 400)
+        );
+
+        $api = 'http://127.0.0.1:' . $port;
+        $install = makeInstall($root, $appSource, [
+            'github_api' => $api,
+            'github_token' => 'good-token',
+        ]);
+        $result = (new GitHub($install['config']))->listRepos(true);
+        $names = array_column($result['repos'], 'name');
+        TestSuite::assertTrue(in_array('private-one', $names, true), 'private repository missing');
+        TestSuite::assertTrue(in_array('public-one', $names, true), 'public repository missing');
+        TestSuite::assertTrue(!in_array('someone-else', $names, true), 'repository of another owner leaked in');
+
+        $rejected = makeInstall($root, $appSource, [
+            'github_api' => $api,
+            'github_token' => 'bad-token',
+        ]);
+        $fallback = (new GitHub($rejected['config']))->listRepos(true);
+        $fallbackNames = array_column($fallback['repos'], 'name');
+        TestSuite::assertSame(['public-one'], $fallbackNames, 'public fallback');
+        TestSuite::assertContains('rejected', $fallback['message']);
+    } finally {
+        proc_terminate($process);
+        proc_close($process);
     }
 });
 

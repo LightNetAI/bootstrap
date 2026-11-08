@@ -133,9 +133,16 @@ while the issued SSH key is used for two things it *can* do:
 * `git clone` with a pinned `known_hosts` and `IdentitiesOnly=yes` during
   deployment.
 
-Public repositories are listed without a token. To see private repositories,
-create a fine-grained token with **Metadata: read** and put it in
-`config.php` (`github_token`). The token never reaches the browser.
+Public repositories are listed without a token. Private repositories require a
+`github_token` in `config.php`: the frontend calls `/user/repos` (the
+authenticated listing) and keeps only repositories owned by `github_owner`.
+That matters because `/users/{owner}/repos` never returns private entries,
+even when the request is authenticated, so a token alone was not enough.
+
+Use a classic token with the `repo` scope, or a fine-grained token that has
+access to those repositories (**Metadata: read** is enough to list them; the
+clone itself uses SSH). The token is only sent to `api.github.com`, never to
+the browser, and is not written to the cache.
 
 ## Deployment mechanics (and why deleting the installer is safe)
 
@@ -191,7 +198,7 @@ See [SECURITY.md](SECURITY.md) for the threat model and reporting.
 | `The web root contains files …` | confirm the extra files can be deleted, then deploy again |
 | `Could not decrypt the SSH key` | the password or the backend response changed in transit — retry; check TLS |
 | Blank page after deploy | the project has no `index.php` or `index.html`; the deploy was rolled back |
-| Private repos missing | set `github_token` in `config.php` |
+| Private repos missing | set `github_token` in `config.php` (classic `repo` scope, or fine-grained with access to those repositories). The listing uses `/user/repos`; click Refresh after changing it |
 | Sign-in says `HTTP 403 … non-JSON response` | the backend host is returning an Apache/nginx error instead of JSON: make sure its document root is `public/`, PHP runs `index.php`, and `public/.htaccess` is readable by the web user (`chmod 644`, parent directories `+x`) |
 | `php: command not found` | run the installer with the panel's binary, e.g. `php8.3` or `/usr/local/bin/php` |
 | `FAIL PHP 8.1 or newer is required` | switch the shell to a newer PHP (panel PHP selector, `update-alternatives`) and re-run |
