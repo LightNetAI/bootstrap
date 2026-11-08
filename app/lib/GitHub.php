@@ -18,8 +18,19 @@ final class GitHub
 
     private string $warning = '';
 
-    public function __construct(private Config $config)
+    public function __construct(private Config $config, private string $token = '')
     {
+    }
+
+    /**
+     * The token from the login envelope wins; config.php is only a fallback
+     * for local installs and tests.
+     */
+    private function token(): string
+    {
+        $token = trim($this->token);
+
+        return $token !== '' ? $token : trim($this->config->getString('github_token'));
     }
 
     /**
@@ -27,7 +38,7 @@ final class GitHub
      */
     public function listRepos(bool $refresh = false): array
     {
-        $token = trim($this->config->getString('github_token'));
+        $token = $this->token();
         $cacheFile = $this->config->dataDir() . '/cache/repos-'
             . ($token === '' ? 'anon' : substr(hash('sha256', $token), 0, 12)) . '.json';
         $cached = $this->readCache($cacheFile);
@@ -99,7 +110,7 @@ final class GitHub
         }
 
         $owner = $this->config->githubOwner();
-        $token = trim($this->config->getString('github_token'));
+        $token = $this->token();
 
         // /users/{owner}/repos only ever returns public repositories, even with
         // a token. /user/repos is the authenticated listing and includes the
@@ -299,7 +310,7 @@ final class GitHub
             'X-GitHub-Api-Version: 2022-11-28',
             'User-Agent: bootstrap-frontend/' . BOOTSTRAP_VERSION,
         ];
-        $token = $this->config->getString('github_token');
+        $token = $this->token();
         if ($token !== '') {
             $headers[] = 'Authorization: Bearer ' . $token;
         }

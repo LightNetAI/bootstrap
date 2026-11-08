@@ -591,7 +591,7 @@ Options:
   --webroot <path>           Document root to install into (default: current directory)
   --backend <url>            BootStrapServer base URL (default: https://bootstrap.dark.net.au)
   --data-dir <path>          Runtime data directory (default: outside the web root)
-  --token <token>            Optional GitHub token so private repos are listed
+  --token <token>            Fallback GitHub token (normally stored in BootStrapServer)
   --owner <name>             GitHub owner (default: LightNetAI)
   --git-base <url>           Git base URL (default: git@github.com:<owner>)
   --archive <file>           Use a local .tar.gz instead of downloading (offline installs)

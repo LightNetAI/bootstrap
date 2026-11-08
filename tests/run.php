@@ -170,6 +170,23 @@ TestSuite::test('frontend opens a valid key envelope', function () use ($root): 
         'sealed' => base64_encode((string) $ciphertext),
     ];
 
+    $token = 'ghp_' . str_repeat('token', 8);
+    $tokenAad = Crypto::transportTokenAad('alice', $fingerprint);
+    $tokenNonce = random_bytes(12);
+    $tokenTag = '';
+    $tokenCiphertext = openssl_encrypt($token, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $tokenNonce, $tokenTag, $tokenAad, 16);
+    $envelope['token'] = [
+        'alg' => 'aes-256-gcm',
+        'nonce' => base64_encode($tokenNonce),
+        'tag' => base64_encode($tokenTag),
+        'aad' => $tokenAad,
+        'sealed' => base64_encode((string) $tokenCiphertext),
+    ];
+
+    $secrets = Crypto::openEnvelopeSecrets($password, $envelope, 'alice');
+    TestSuite::assertContains('BEGIN OPENSSH PRIVATE KEY', $secrets['private_key']);
+    TestSuite::assertSame($token, $secrets['github_token']);
+
     $decrypted = Crypto::openEnvelope($password, $envelope, 'alice');
     TestSuite::assertContains('BEGIN OPENSSH PRIVATE KEY', $decrypted);
     TestSuite::assertSame(
@@ -179,6 +196,14 @@ TestSuite::test('frontend opens a valid key envelope', function () use ($root): 
 
     // Wrong password.
     TestSuite::expectException(fn () => Crypto::openEnvelope('wrong-password', $envelope, 'alice'), RuntimeException::class);
+
+    // The token block is bound to the account as well.
+    $tokenTampered = $envelope;
+    $tokenTampered['token']['aad'] = Crypto::transportTokenAad('bob', $fingerprint);
+    TestSuite::expectException(
+        fn () => Crypto::openEnvelopeSecrets($password, $tokenTampered, 'alice'),
+        RuntimeException::class
+    );
 
     // Username binding is checked before decryption.
     TestSuite::expectException(fn () => Crypto::openEnvelope($password, $envelope, 'bob'), RuntimeException::class);
@@ -408,6 +433,15 @@ TestSuite::test('token listing includes private repositories and falls back on r
         TestSuite::assertTrue(in_array('private-one', $names, true), 'private repository missing');
         TestSuite::assertTrue(in_array('public-one', $names, true), 'public repository missing');
         TestSuite::assertTrue(!in_array('someone-else', $names, true), 'repository of another owner leaked in');
+
+        // A token supplied by the login envelope overrides the config fallback.
+        $override = makeInstall($root, $appSource, [
+            'github_api' => $api,
+            'github_token' => 'bad-token',
+        ]);
+        $overrideResult = (new GitHub($override['config'], 'good-token'))->listRepos(true);
+        $overrideNames = array_column($overrideResult['repos'], 'name');
+        TestSuite::assertTrue(in_array('private-one', $overrideNames, true), 'session token did not override config');
 
         $rejected = makeInstall($root, $appSource, [
             'github_api' => $api,

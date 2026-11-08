@@ -49,6 +49,18 @@ final class Crypto
      */
     public static function openEnvelope(string $password, array $envelope, string $username): string
     {
+        return self::openEnvelopeSecrets($password, $envelope, $username)['private_key'];
+    }
+
+    /**
+     * Open the envelope and return both secrets: the SSH private key and the
+     * optional GitHub token stored by BootStrapServer.
+     *
+     * @param array<string, mixed> $envelope
+     * @return array{private_key: string, github_token: string}
+     */
+    public static function openEnvelopeSecrets(string $password, array $envelope, string $username): array
+    {
         if (!isset($envelope['v'], $envelope['kdf'], $envelope['cipher'], $envelope['key'], $envelope['sealed'])) {
             throw new RuntimeException('Key envelope is incomplete.');
         }
@@ -111,12 +123,46 @@ final class Crypto
             throw new RuntimeException('Public key fingerprint mismatch.');
         }
 
-        return $privateKey;
+        $githubToken = '';
+        if (isset($envelope['token'])) {
+            $tokenBlock = $envelope['token'];
+            if (!is_array($tokenBlock)
+                || ($tokenBlock['alg'] ?? '') !== self::CIPHER_ALGORITHM
+                || !isset($tokenBlock['nonce'], $tokenBlock['tag'], $tokenBlock['aad'], $tokenBlock['sealed'])) {
+                throw new RuntimeException('Malformed GitHub token block in the envelope.');
+            }
+
+            $expectedTokenAad = self::transportTokenAad($username, (string) $keyInfo['fingerprint']);
+            if (!hash_equals($expectedTokenAad, (string) $tokenBlock['aad'])) {
+                throw new RuntimeException('GitHub token block is not bound to this account.');
+            }
+
+            $decryptedToken = openssl_decrypt(
+                self::b64d((string) $tokenBlock['sealed']),
+                self::CIPHER_ALGORITHM,
+                $key,
+                OPENSSL_RAW_DATA,
+                self::b64d((string) $tokenBlock['nonce']),
+                self::b64d((string) $tokenBlock['tag']),
+                $expectedTokenAad
+            );
+            if ($decryptedToken === false) {
+                throw new RuntimeException('Could not decrypt the GitHub token.');
+            }
+            $githubToken = trim($decryptedToken);
+        }
+
+        return ['private_key' => $privateKey, 'github_token' => $githubToken];
     }
 
     public static function transportAad(string $username, string $fingerprint): string
     {
         return 'bskey:transport:v1|' . strtolower(trim($username)) . '|' . $fingerprint;
+    }
+
+    public static function transportTokenAad(string $username, string $fingerprint): string
+    {
+        return 'bskey:transport-token:v1|' . strtolower(trim($username)) . '|' . $fingerprint;
     }
 
     public static function fingerprint(string $publicKeyLine): string

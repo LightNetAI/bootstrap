@@ -47,7 +47,7 @@ final class Config
             'github_owner' => 'LightNetAI',
             'github_owner_type' => 'auto', // auto | user | org
             'github_api' => 'https://api.github.com',
-            'github_token' => '',          // optional: enables private repo listing
+            'github_token' => '',          // fallback; normally supplied by BootStrapServer
             'git_base' => 'git@github.com:LightNetAI',
             'git_binary' => 'git',
             'known_hosts' => [

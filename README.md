@@ -79,7 +79,7 @@ a data directory outside the web root (or inside it, deny-protected, if
 --webroot <path>         document root (default: current directory)
 --backend <url>          BootStrapServer URL (default: https://bootstrap.dark.net.au)
 --data-dir <path>        runtime directory (default: sibling .bootstrap-data-*)
---token <token>          GitHub token so private repositories are listed
+--token <token>          fallback GitHub token (normally stored in BootStrapServer)
 --owner <name>           GitHub owner (default: LightNetAI)
 --git-base <url>         git base URL (default: git@github.com:<owner>)
 --archive <file>         install from a local .tar.gz (offline)
@@ -107,7 +107,7 @@ kept.
 'backend_url'   => 'https://bootstrap.dark.net.au', // hard-coded, not user editable
 'data_dir'      => '/home/site/.bootstrap-data-xxxxxxxxxx',
 'github_owner'  => 'LightNetAI',
-'github_token'  => '',                              // optional, enables private repos
+'github_token'  => '',                              // fallback; normally supplied by BootStrapServer
 'git_base'      => 'git@github.com:LightNetAI',
 'known_hosts'   => [ ... pinned github.com host keys ... ],
 'session_ttl'   => 1800,
@@ -133,16 +133,24 @@ while the issued SSH key is used for two things it *can* do:
 * `git clone` with a pinned `known_hosts` and `IdentitiesOnly=yes` during
   deployment.
 
-Public repositories are listed without a token. Private repositories require a
-`github_token` in `config.php`: the frontend calls `/user/repos` (the
-authenticated listing) and keeps only repositories owned by `github_owner`.
-That matters because `/users/{owner}/repos` never returns private entries,
-even when the request is authenticated, so a token alone was not enough.
+Public repositories are listed without a token. Private repositories need one,
+stored once in BootStrapServer:
 
-Use a classic token with the `repo` scope, or a fine-grained token that has
-access to those repositories (**Metadata: read** is enough to list them; the
-clone itself uses SSH). The token is only sent to `api.github.com`, never to
-the browser, and is not written to the cache.
+```bash
+php bin/bootstrap-server github:token     # or --token-stdin
+```
+
+On login the backend seals the token into the encrypted envelope alongside the
+SSH key. The frontend decrypts it, keeps it in its server-side session (0600,
+never sent to the browser), and uses it for `/user/repos`, keeping only
+repositories owned by `github_owner`. That endpoint is required because
+`/users/{owner}/repos` never returns private entries, even when authenticated.
+The token is discarded at logout.
+
+Use a classic token with the `repo` scope, or a fine-grained token with access
+to those repositories (**Metadata: read** is enough to list them; clones use
+the SSH key). `github_token` in `config.php` is still accepted as a fallback
+for local development; the value from the login envelope wins when both exist.
 
 ## Deployment mechanics (and why deleting the installer is safe)
 
@@ -198,7 +206,7 @@ See [SECURITY.md](SECURITY.md) for the threat model and reporting.
 | `The web root contains files …` | confirm the extra files can be deleted, then deploy again |
 | `Could not decrypt the SSH key` | the password or the backend response changed in transit — retry; check TLS |
 | Blank page after deploy | the project has no `index.php` or `index.html`; the deploy was rolled back |
-| Private repos missing | set `github_token` in `config.php` (classic `repo` scope, or fine-grained with access to those repositories). The listing uses `/user/repos`; click Refresh after changing it |
+| Private repos missing | store the token with `php bin/bootstrap-server github:token` (classic `repo` scope, or fine-grained with access to those repositories). The listing uses `/user/repos`; sign in again after changing it |
 | Sign-in says `HTTP 403 … non-JSON response` | the backend host is returning an Apache/nginx error instead of JSON: make sure its document root is `public/`, PHP runs `index.php`, and `public/.htaccess` is readable by the web user (`chmod 644`, parent directories `+x`) |
 | `php: command not found` | run the installer with the panel's binary, e.g. `php8.3` or `/usr/local/bin/php` |
 | `FAIL PHP 8.1 or newer is required` | switch the shell to a newer PHP (panel PHP selector, `update-alternatives`) and re-run |

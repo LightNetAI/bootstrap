@@ -90,7 +90,8 @@ function page(Config $config): void
             'github' => (array) ($auth['github'] ?? []),
             'owner' => $config->githubOwner(),
             'backend_host' => (string) parse_url($config->backendUrl(), PHP_URL_HOST),
-            'token_configured' => $config->getString('github_token') !== '',
+            'token_configured' => trim((string) ($auth['github_token'] ?? '')) !== ''
+                || $config->getString('github_token') !== '',
         ]);
 
         return;
@@ -139,7 +140,9 @@ function doLogin(Config $config): never
     }
 
     try {
-        $privateKey = Crypto::openEnvelope($password, $envelope, $username);
+        $secrets = Crypto::openEnvelopeSecrets($password, $envelope, $username);
+        $privateKey = $secrets['private_key'];
+        $githubToken = $secrets['github_token'];
     } catch (\Throwable $exception) {
         Http::jsonError(
             'The SSH key could not be verified: ' . $exception->getMessage(),
@@ -157,6 +160,7 @@ function doLogin(Config $config): never
     Session::establish([
         'username' => (string) $result['data']['user']['username'],
         'private_key' => $privateKey,
+        'github_token' => $githubToken,
         'public_key' => $publicKey,
         'fingerprint' => $fingerprint,
         'key_name' => (string) ($keyInfo['name'] ?? 'default'),
@@ -183,8 +187,9 @@ function doLogout(Config $config): never
 function doRepos(Config $config): never
 {
     $auth = Session::auth($config);
+    $githubToken = trim((string) ($auth['github_token'] ?? ''));
 
-    $github = new GitHub($config);
+    $github = new GitHub($config, $githubToken);
     $listing = $github->listRepos(isset($_GET['refresh']));
 
     $deployer = new Deployer($config, (string) $auth['private_key'], (string) $auth['public_key']);
@@ -199,7 +204,7 @@ function doRepos(Config $config): never
         'rate_limited' => $listing['rate_limited'],
         'github' => (array) ($auth['github'] ?? []),
         'deploy' => $inspect,
-        'token_configured' => $config->getString('github_token') !== '',
+        'token_configured' => $githubToken !== '' || $config->getString('github_token') !== '',
         'owner' => $config->githubOwner(),
     ]);
 }

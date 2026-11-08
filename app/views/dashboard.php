@@ -52,7 +52,8 @@ $sshMessage = (string) ($github['message'] ?? '');
         <p class="muted small" id="repo-source"></p>
         <?php if (!$token_configured): ?>
             <p class="muted small">
-                Only public repositories are listed. Add a <code>github_token</code> to config.php to include private ones.
+                Only public repositories are listed. Store a GitHub token on BootStrapServer
+                (<code>php bin/bootstrap-server github:token</code>) to include private ones.
             </p>
         <?php endif; ?>
     </div>

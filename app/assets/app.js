@@ -118,7 +118,7 @@
 
             if (visible.length === 0) {
                 list.innerHTML = '<div class="empty">' + (repos.length === 0
-                    ? 'No projects were returned. Check the github_token / owner settings.'
+                    ? 'No projects were returned. Check the BootStrapServer GitHub token / owner settings.'
                     : 'No projects match that filter.') + '</div>';
                 return;
             }
